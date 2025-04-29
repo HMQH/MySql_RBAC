@@ -1,0 +1,648 @@
+-- 创建数据库
+CREATE DATABASE IF NOT EXISTS 企业人事管理系统 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE 企业人事管理系统;
+
+-- 部门表
+CREATE TABLE 部门 (
+    部门ID INT AUTO_INCREMENT PRIMARY KEY,
+    部门名称 VARCHAR(50) NOT NULL,
+    部门经理ID INT
+);
+
+-- 员工表
+CREATE TABLE 员工 (
+    员工ID INT AUTO_INCREMENT PRIMARY KEY,
+    姓名 VARCHAR(50) NOT NULL,
+    性别 ENUM('男', '女') NOT NULL,
+    出生日期 DATE,
+    联系电话 VARBINARY(100),
+    电子邮箱 VARBINARY(100),
+    入职日期 DATE NOT NULL,
+    部门ID INT,
+    职位 VARCHAR(50),
+    状态 ENUM('在职', '离职') DEFAULT '在职',
+    FOREIGN KEY (部门ID) REFERENCES 部门(部门ID)
+);
+
+-- 添加部门经理ID的外键约束
+ALTER TABLE 部门 ADD CONSTRAINT fk_部门经理 FOREIGN KEY (部门经理ID) REFERENCES 员工(员工ID);
+
+-- 薪资表
+CREATE TABLE 薪资 (
+    薪资ID INT AUTO_INCREMENT PRIMARY KEY,
+    员工ID INT NOT NULL,
+    基本工资 DECIMAL(10, 2) NOT NULL,
+    绩效奖金 DECIMAL(10, 2) DEFAULT 0,
+    福利补贴 DECIMAL(10, 2) DEFAULT 0,
+    社保扣除 DECIMAL(10, 2) DEFAULT 0,
+    个税扣除 DECIMAL(10, 2) DEFAULT 0,
+    实发金额 DECIMAL(10, 2) GENERATED ALWAYS AS (基本工资 + 绩效奖金 + 福利补贴 - 社保扣除 - 个税扣除) STORED,
+    发放年月 DATE NOT NULL,
+    发放状态 ENUM('已发放', '未发放') DEFAULT '未发放',
+    FOREIGN KEY (员工ID) REFERENCES 员工(员工ID)
+);
+
+-- 用户账户表
+CREATE TABLE 用户 (
+    用户ID INT AUTO_INCREMENT PRIMARY KEY,
+    用户名 VARCHAR(50) NOT NULL UNIQUE,
+    密码 VARBINARY(256) NOT NULL,
+    员工ID INT NOT NULL,
+    账户状态 ENUM('激活', '禁用') DEFAULT '激活',
+    上次登录时间 DATETIME,
+    FOREIGN KEY (员工ID) REFERENCES 员工(员工ID)
+);
+
+
+-- 角色表
+CREATE TABLE 角色 (
+    角色ID INT AUTO_INCREMENT PRIMARY KEY,
+    角色名称 VARCHAR(50) NOT NULL UNIQUE,
+    角色描述 TEXT
+);
+
+-- 用户角色表
+CREATE TABLE 用户角色 (
+    ID INT AUTO_INCREMENT PRIMARY KEY,
+    用户ID INT NOT NULL,
+    角色ID INT NOT NULL,
+    FOREIGN KEY (用户ID) REFERENCES 用户(用户ID),
+    FOREIGN KEY (角色ID) REFERENCES 角色(角色ID)
+);
+
+CREATE TABLE 系统密钥 (
+    密钥ID INT AUTO_INCREMENT PRIMARY KEY,
+    密钥名称 VARCHAR(50) NOT NULL,
+    密钥值 VARBINARY(256) NOT NULL,
+    创建时间 DATETIME DEFAULT CURRENT_TIMESTAMP,
+    状态 ENUM('激活', '禁用') DEFAULT '激活'
+);
+-- 创建加密密钥
+INSERT INTO 系统密钥 (密钥名称, 密钥值)
+VALUES ('PASSWORD_KEY', RANDOM_BYTES(32));
+
+-- 创建加密密码函数
+DELIMITER //
+CREATE FUNCTION 加密密码(密码 VARCHAR(100)) RETURNS VARBINARY(256)
+DETERMINISTIC
+BEGIN
+    DECLARE 密钥 VARBINARY(256);
+    SELECT 密钥值 INTO 密钥 FROM 系统密钥 WHERE 密钥名称 = 'PASSWORD_KEY' AND 状态 = '激活' LIMIT 1;
+    RETURN AES_ENCRYPT(密码, 密钥);
+END//
+DELIMITER ;
+
+-- 创建解密密码函数
+DELIMITER //
+CREATE FUNCTION 解密密码(加密数据 VARBINARY(256)) RETURNS VARCHAR(100)
+DETERMINISTIC
+BEGIN
+    DECLARE 密钥 VARBINARY(256);
+    SELECT 密钥值 INTO 密钥 FROM 系统密钥 WHERE 密钥名称 = 'PASSWORD_KEY' AND 状态 = '激活' LIMIT 1;
+    RETURN AES_DECRYPT(加密数据, 密钥);
+END//
+DELIMITER ;
+
+
+-- 创建加密/解密敏感数据的函数
+DELIMITER //
+CREATE FUNCTION 加密敏感数据(数据 VARCHAR(200)) RETURNS VARBINARY(256)
+DETERMINISTIC
+BEGIN
+    DECLARE 密钥 VARBINARY(256);
+    SELECT 密钥值 INTO 密钥 FROM 系统密钥 WHERE 密钥名称 = 'SENSITIVE_DATA_KEY' AND 状态 = '激活' LIMIT 1;
+    RETURN AES_ENCRYPT(数据, 密钥);
+END//
+DELIMITER ;
+
+DELIMITER //
+CREATE FUNCTION 解密敏感数据(加密数据 VARBINARY(256)) RETURNS VARCHAR(200)
+DETERMINISTIC
+BEGIN
+    DECLARE 密钥 VARBINARY(256);
+    SELECT 密钥值 INTO 密钥 FROM 系统密钥 WHERE 密钥名称 = 'SENSITIVE_DATA_KEY' AND 状态 = '激活' LIMIT 1;
+    RETURN AES_DECRYPT(加密数据, 密钥);
+END//
+DELIMITER ;
+
+-- 创建敏感数据加密密钥
+INSERT INTO 系统密钥 (密钥名称, 密钥值)
+VALUES ('SENSITIVE_DATA_KEY', RANDOM_BYTES(32));
+
+-- 插入部门数据
+INSERT INTO 部门 (部门名称) VALUES 
+('财务部'),
+('人力资源部'),
+('技术部'),
+('市场部'),
+('销售部'),
+('行政部');
+
+-- 插入员工数据
+INSERT INTO 员工 (姓名, 性别, 出生日期, 联系电话, 电子邮箱, 入职日期, 部门ID, 职位) VALUES
+-- 财务部员工（编号1-15）
+('张伟', '男', '1985-03-12', '13801234001', 'zhangwei@example.com', '2018-07-01', 1, '财务部经理'),
+('王芳', '女', '1990-05-23', '13801234002', 'wangfang@example.com', '2019-01-15', 1, '财务专员'),
+('李娜', '女', '1992-11-07', '13801234003', 'lina@example.com', '2019-06-20', 1, '财务专员'),
+('刘洋', '男', '1988-09-17', '13801234004', 'liuyang@example.com', '2018-10-10', 1, '财务专员'),
+('陈明', '男', '1987-02-28', '13801234005', 'chenming@example.com', '2020-03-05', 1, '财务专员'),
+('赵霞', '女', '1991-07-19', '13801234006', 'zhaoxia@example.com', '2020-05-15', 1, '财务专员'),
+('杨帆', '男', '1993-04-05', '13801234007', 'yangfan@example.com', '2021-01-10', 1, '财务专员'),
+('周丽', '女', '1989-12-22', '13801234008', 'zhouli@example.com', '2019-11-20', 1, '财务专员'),
+('吴强', '男', '1986-08-14', '13801234009', 'wuqiang@example.com', '2018-09-01', 1, '财务专员'),
+('郑婷', '女', '1994-01-30', '13801234010', 'zhengting@example.com', '2021-04-12', 1, '财务专员'),
+('孙健', '男', '1990-06-16', '13801234011', 'sunjian@example.com', '2020-07-20', 1, '财务专员'),
+('马丽', '女', '1992-03-08', '13801234012', 'mali@example.com', '2021-02-15', 1, '财务专员'),
+('胡明', '男', '1987-11-25', '13801234013', 'huming@example.com', '2019-05-10', 1, '财务专员'),
+('朱琳', '女', '1993-09-03', '13801234014', 'zhulin@example.com', '2020-11-01', 1, '财务专员'),
+('徐刚', '男', '1988-04-19', '13801234015', 'xugang@example.com', '2019-08-15', 1, '财务专员'),
+
+-- 人力资源部员工（编号16-30）
+('沈莉', '女', '1984-07-21', '13801234016', 'shenli@example.com', '2017-10-01', 2, '人力资源部经理'),
+('韩涛', '男', '1989-02-14', '13801234017', 'hantao@example.com', '2018-11-15', 2, '人力资源管理员'),
+('曹颖', '女', '1991-12-05', '13801234018', 'caoying@example.com', '2019-04-10', 2, '人力资源管理员'),
+('谢峰', '男', '1987-05-18', '13801234019', 'xiefeng@example.com', '2020-01-20', 2, '招聘专员'),
+('邓丽', '女', '1993-08-27', '13801234020', 'dengli@example.com', '2021-03-15', 2, '培训专员'),
+('萧雷', '男', '1986-10-09', '13801234021', 'xiaolei@example.com', '2018-05-25', 2, '人力资源管理员'),
+('唐婷', '女', '1990-01-11', '13801234022', 'tangting@example.com', '2019-07-05', 2, '人力资源管理员'),
+('冯刚', '男', '1985-06-23', '13801234023', 'fenggang@example.com', '2017-12-10', 2, '薪酬专员'),
+('董娟', '女', '1992-09-14', '13801234024', 'dongjuan@example.com', '2020-06-01', 2, '绩效专员'),
+('蒋军', '男', '1988-03-26', '13801234025', 'jiangjun@example.com', '2019-09-15', 2, '人力资源管理员'),
+('余梅', '女', '1994-05-07', '13801234026', 'yumei@example.com', '2021-05-20', 2, '招聘专员'),
+('魏强', '男', '1987-11-19', '13801234027', 'weiqiang@example.com', '2018-08-10', 2, '人力资源管理员'),
+('秦洁', '女', '1991-02-02', '13801234028', 'qinjie@example.com', '2019-10-25', 2, '人力资源管理员'),
+('梁波', '男', '1986-04-13', '13801234029', 'liangbo@example.com', '2020-02-15', 2, '培训专员'),
+('郭琳', '女', '1993-07-24', '13801234030', 'guolin@example.com', '2021-01-05', 2, '人力资源管理员'),
+
+-- 技术部员工（编号31-50）
+('范鹏', '男', '1983-09-15', '13801234031', 'fanpeng@example.com', '2016-08-01', 3, '技术部经理'),
+('金莉', '女', '1988-11-27', '13801234032', 'jinli@example.com', '2018-03-15', 3, '高级开发工程师'),
+('鲁明', '男', '1990-04-09', '13801234033', 'luming@example.com', '2019-02-10', 3, '开发工程师'),
+('尹芳', '女', '1992-06-21', '13801234034', 'yinfang@example.com', '2020-04-20', 3, '开发工程师'),
+('石刚', '男', '1986-01-03', '13801234035', 'shigang@example.com', '2017-11-05', 3, '系统架构师'),
+('贺玲', '女', '1989-08-14', '13801234036', 'heling@example.com', '2018-10-25', 3, '测试工程师'),
+('廖强', '男', '1993-03-26', '13801234037', 'liaoqiang@example.com', '2021-02-15', 3, '开发工程师'),
+('龚丽', '女', '1987-12-08', '13801234038', 'gongli@example.com', '2019-05-10', 3, '数据分析师'),
+('邹勇', '男', '1984-05-19', '13801234039', 'zouyong@example.com', '2017-07-01', 3, '高级开发工程师'),
+('丁敏', '女', '1991-10-31', '13801234040', 'dingmin@example.com', '2020-01-15', 3, '开发工程师'),
+('江涛', '男', '1988-07-12', '13801234041', 'jiangtao@example.com', '2018-09-20', 3, '开发工程师'),
+('何娜', '女', '1993-01-24', '13801234042', 'hena@example.com', '2020-08-10', 3, '测试工程师'),
+('吕刚', '男', '1986-09-05', '13801234043', 'lvgang@example.com', '2017-12-15', 3, '产品经理'),
+('彭丽', '女', '1990-02-16', '13801234044', 'pengli@example.com', '2019-03-25', 3, '用户界面设计师'),
+('陶强', '男', '1985-11-28', '13801234045', 'taoqiang@example.com', '2016-10-01', 3, '数据库管理员'),
+('夏梅', '女', '1992-04-09', '13801234046', 'xiamei@example.com', '2020-05-15', 3, '开发工程师'),
+('程明', '男', '1987-06-20', '13801234047', 'chengming@example.com', '2018-02-10', 3, '高级开发工程师'),
+('傅玲', '女', '1994-03-01', '13801234048', 'fuling@example.com', '2021-04-20', 3, '开发工程师'),
+('方刚', '男', '1989-08-12', '13801234049', 'fanggang@example.com', '2019-06-05', 3, '测试工程师'),
+('崔婷', '女', '1991-12-23', '13801234050', 'cuiting@example.com', '2020-03-10', 3, '开发工程师'),
+
+-- 市场部员工（编号51-65）
+('邱涛', '男', '1982-05-17', '13801234051', 'qiutao@example.com', '2015-09-01', 4, '市场部经理'),
+('史娟', '女', '1987-07-28', '13801234052', 'shijuan@example.com', '2018-04-15', 4, '市场分析师'),
+('侯强', '男', '1989-10-09', '13801234053', 'houqiang@example.com', '2019-01-10', 4, '市场策划'),
+('白丽', '女', '1992-02-20', '13801234054', 'baili@example.com', '2020-03-20', 4, '市场专员'),
+('孔明', '男', '1985-11-01', '13801234055', 'kongming@example.com', '2017-06-05', 4, '品牌经理'),
+('曾芳', '女', '1988-04-12', '13801234056', 'zengfang@example.com', '2018-08-25', 4, '市场专员'),
+('苏强', '男', '1993-09-23', '13801234057', 'suqiang@example.com', '2021-01-15', 4, '市场调研员'),
+('毕梅', '女', '1986-03-05', '13801234058', 'bimei@example.com', '2017-10-10', 4, '市场专员'),
+('田刚', '男', '1984-08-16', '13801234059', 'tiangang@example.com', '2016-12-01', 4, '广告策划'),
+('姜丽', '女', '1990-12-27', '13801234060', 'jiangli@example.com', '2019-09-15', 4, '市场专员'),
+('戴强', '男', '1987-05-08', '13801234061', 'daiqiang@example.com', '2018-07-20', 4, '市场分析师'),
+('宋芳', '女', '1993-02-19', '13801234062', 'songfang@example.com', '2020-11-10', 4, '市场专员'),
+('严刚', '男', '1986-10-30', '13801234063', 'yangang@example.com', '2017-05-15', 4, '媒体关系'),
+('韦丽', '女', '1989-06-11', '13801234064', 'weili@example.com', '2019-03-25', 4, '市场专员'),
+('贾明', '男', '1992-01-22', '13801234065', 'jiaming@example.com', '2020-08-05', 4, '市场策划'),
+
+-- 销售部员工（编号66-85）
+('伍强', '男', '1981-03-14', '13801234066', 'wuqiang@example.com', '2014-10-01', 5, '销售部经理'),
+('孙丽', '女', '1986-05-25', '13801234067', 'sunli@example.com', '2017-02-15', 5, '销售主管'),
+('任刚', '男', '1988-08-06', '13801234068', 'rengang@example.com', '2018-05-10', 5, '高级销售代表'),
+('潘芳', '女', '1991-11-17', '13801234069', 'panfang@example.com', '2019-08-20', 5, '销售代表'),
+('卢明', '男', '1984-04-28', '13801234070', 'luming@example.com', '2016-07-05', 5, '客户经理'),
+('袁娜', '女', '1987-09-09', '13801234071', 'yuanna@example.com', '2018-01-25', 5, '销售代表'),
+('沈强', '男', '1992-12-20', '13801234072', 'shenqiang@example.com', '2020-04-15', 5, '销售代表'),
+('姚梅', '女', '1985-02-01', '13801234073', 'yaomei@example.com', '2017-03-10', 5, '区域销售经理'),
+('宋刚', '男', '1983-07-12', '13801234074', 'songgang@example.com', '2015-11-01', 5, '高级销售代表'),
+('熊丽', '女', '1989-10-23', '13801234075', 'xiongli@example.com', '2019-02-15', 5, '销售代表'),
+('赖强', '男', '1986-01-04', '13801234076', 'laiqiang@example.com', '2017-09-20', 5, '销售代表'),
+('阎芳', '女', '1993-04-15', '13801234077', 'yanfang@example.com', '2020-07-10', 5, '客户经理'),
+('孟刚', '男', '1985-06-26', '13801234078', 'menggang@example.com', '2016-12-15', 5, '销售代表'),
+('席丽', '女', '1988-09-07', '13801234079', 'xili@example.com', '2018-04-25', 5, '销售代表'),
+('丁强', '男', '1991-12-18', '13801234080', 'dingqiang@example.com', '2019-10-05', 5, '销售代表'),
+('阮梅', '女', '1984-03-29', '13801234081', 'ruanmei@example.com', '2016-05-15', 5, '销售代表'),
+('柳刚', '男', '1987-08-10', '13801234082', 'liugang@example.com', '2018-02-10', 5, '高级销售代表'),
+('阙丽', '女', '1990-11-21', '13801234083', 'queli@example.com', '2019-05-20', 5, '销售代表'),
+('卓强', '男', '1993-02-02', '13801234084', 'zhuoqiang@example.com', '2020-09-15', 5, '销售代表'),
+('章芳', '女', '1986-05-13', '13801234085', 'zhangfang@example.com', '2017-07-10', 5, '销售代表'),
+
+-- 行政部员工（编号86-100）
+('苏明', '男', '1980-01-24', '13801234086', 'suming@example.com', '2013-11-01', 6, '行政部经理'),
+('黎娜', '女', '1985-04-05', '13801234087', 'lina@example.com', '2016-01-15', 6, '行政主管'),
+('水刚', '男', '1987-07-16', '13801234088', 'shuigang@example.com', '2017-04-10', 6, '办公室主任'),
+('蔡芳', '女', '1990-10-27', '13801234089', 'caifang@example.com', '2019-07-20', 6, '行政助理'),
+('雷明', '男', '1983-02-08', '13801234090', 'leiming@example.com', '2015-06-05', 6, '后勤主管'),
+('傅娜', '女', '1986-05-19', '13801234091', 'funa@example.com', '2017-09-25', 6, '前台接待'),
+('于强', '男', '1991-08-30', '13801234092', 'yuqiang@example.com', '2019-12-15', 6, '行政专员'),
+('曲梅', '女', '1984-11-10', '13801234093', 'qumei@example.com', '2016-03-10', 6, '档案管理员'),
+('金刚', '男', '1982-03-21', '13801234094', 'jingang@example.com', '2014-08-01', 6, '采购专员'),
+('汤丽', '女', '1988-06-01', '13801234095', 'tangli@example.com', '2018-10-15', 6, '行政助理'),
+('安强', '男', '1985-09-12', '13801234096', 'anqiang@example.com', '2016-12-20', 6, '安保主管'),
+('乔芳', '女', '1992-12-23', '13801234097', 'qiaofang@example.com', '2020-03-10', 6, '行政专员'),
+('仇刚', '男', '1984-03-05', '13801234098', 'chougang@example.com', '2015-09-15', 6, '行政专员'),
+('池丽', '女', '1987-06-16', '13801234099', 'chili@example.com', '2017-11-25', 6, '行政助理'),
+('童明', '男', '1990-09-27', '13801234100', 'tongming@example.com', '2019-04-05', 6, '行政专员');
+
+
+-- 更新部门表，设置部门经理
+UPDATE 部门 SET 部门经理ID = 1 WHERE 部门ID = 1; -- 财务部，张伟为部门经理
+UPDATE 部门 SET 部门经理ID = 16 WHERE 部门ID = 2; -- 人力资源部，沈莉为部门经理
+UPDATE 部门 SET 部门经理ID = 31 WHERE 部门ID = 3; -- 技术部，范鹏为部门经理
+UPDATE 部门 SET 部门经理ID = 51 WHERE 部门ID = 4; -- 市场部，邱涛为部门经理
+UPDATE 部门 SET 部门经理ID = 66 WHERE 部门ID = 5; -- 销售部，伍强为部门经理
+UPDATE 部门 SET 部门经理ID = 86 WHERE 部门ID = 6; -- 行政部，苏明为部门经理
+
+-- 插入薪资数据（为每位员工创建一条本月薪资记录）
+INSERT INTO 薪资 (员工ID, 基本工资, 绩效奖金, 福利补贴, 社保扣除, 个税扣除, 发放年月, 发放状态)
+SELECT 
+    员工ID,
+    CASE
+        WHEN 职位 LIKE '%经理%' THEN 15000 + FLOOR(RAND() * 5000)
+        WHEN 职位 LIKE '%主管%' THEN 12000 + FLOOR(RAND() * 3000)
+        WHEN 职位 LIKE '%高级%' THEN 10000 + FLOOR(RAND() * 2000)
+        ELSE 8000 + FLOOR(RAND() * 2000)
+    END AS 基本工资,
+    CASE
+        WHEN 职位 LIKE '%经理%' THEN 3000 + FLOOR(RAND() * 2000)
+        WHEN 职位 LIKE '%主管%' THEN 2000 + FLOOR(RAND() * 1500)
+        WHEN 职位 LIKE '%高级%' THEN 1500 + FLOOR(RAND() * 1000)
+        ELSE 1000 + FLOOR(RAND() * 800)
+    END AS 绩效奖金,
+    CASE
+        WHEN 职位 LIKE '%经理%' THEN 2000 + FLOOR(RAND() * 1000)
+        WHEN 职位 LIKE '%主管%' THEN 1500 + FLOOR(RAND() * 800)
+        ELSE 1000 + FLOOR(RAND() * 500)
+    END AS 福利补贴,
+    CASE
+        WHEN 职位 LIKE '%经理%' THEN 2500 + FLOOR(RAND() * 500)
+        WHEN 职位 LIKE '%主管%' THEN 2000 + FLOOR(RAND() * 400)
+        ELSE 1600 + FLOOR(RAND() * 300)
+    END AS 社保扣除,
+    CASE
+        WHEN 职位 LIKE '%经理%' THEN 2000 + FLOOR(RAND() * 1000)
+        WHEN 职位 LIKE '%主管%' THEN 1200 + FLOOR(RAND() * 800)
+        WHEN 职位 LIKE '%高级%' THEN 800 + FLOOR(RAND() * 500)
+        ELSE 500 + FLOOR(RAND() * 300)
+    END AS 个税扣除,
+    '2025-04-01' AS 发放年月,
+    '已发放' AS 发放状态
+FROM 员工
+WHERE 状态 = '在职';
+
+-- 插入角色
+INSERT INTO 角色 (角色名称, 角色描述) VALUES
+('系统管理员', '拥有最高权限，可以操作所有表和数据，可以创建和管理用户账户与角色，可以执行任何数据库操作'),
+('人力资源管理员', '可以查看和修改所有员工信息，可以维护部门结构，不可以管理薪资信息，不能创建或删除数据库对象'),
+('部门经理', '只能查看和修改自己部门员工的基本信息，可以查看(但不能修改)自己部门员工的薪资，无法查看其他部门的详细信息'),
+('财务专员', '可以查看和修改所有员工的薪资信息（除了财务部），可以查看但不能修改员工基本信息，可以生成整个公司或按部门的薪资报表，无权修改员工基本信息和部门结构');
+
+-- 创建或替换视图：员工基本信息视图（所有员工）
+CREATE OR REPLACE VIEW 全部员工信息视图 AS
+SELECT e.员工ID, e.姓名, e.性别, e.出生日期,解密敏感数据(e.联系电话) AS 联系电话, 解密敏感数据(e.电子邮箱) AS 电子邮箱, e.入职日期, e.部门ID, d.部门名称, e.职位, e.状态
+FROM 员工 e
+JOIN 部门 d ON e.部门ID = d.部门ID;
+
+-- 创建或替换视图：薪资信息视图
+CREATE OR REPLACE VIEW 薪资信息视图 AS
+SELECT s.薪资ID, s.员工ID, e.姓名, d.部门ID, d.部门名称, e.职位, 
+       s.基本工资, s.绩效奖金, s.福利补贴, s.社保扣除, s.个税扣除, s.实发金额, 
+       s.发放年月, s.发放状态
+FROM 薪资 s
+JOIN 员工 e ON s.员工ID = e.员工ID
+JOIN 部门 d ON e.部门ID = d.部门ID;
+
+-- 创建或替换视图：非财务部薪资视图
+CREATE OR REPLACE VIEW 非财务部薪资视图 AS
+SELECT s.薪资ID, s.员工ID, e.姓名, d.部门ID, d.部门名称, e.职位, 
+       s.基本工资, s.绩效奖金, s.福利补贴, s.社保扣除, s.个税扣除, s.实发金额, 
+       s.发放年月, s.发放状态
+FROM 薪资 s
+JOIN 员工 e ON s.员工ID = e.员工ID
+JOIN 部门 d ON e.部门ID = d.部门ID
+WHERE d.部门名称 != '财务部';
+
+
+-- 1. 创建系统管理员用户(假设员工ID为1的人是系统管理员)
+INSERT INTO 用户 (用户名, 密码, 员工ID, 账户状态, 上次登录时间)
+VALUES ('admin', 加密密码('admin123'), 1, '激活', NOW());
+
+-- 2. 根据部门表中的部门经理ID创建所有部门经理用户
+INSERT INTO 用户 (用户名, 密码, 员工ID, 账户状态, 上次登录时间)
+SELECT 
+    CONCAT(d.部门名称, '_manager'), -- 用户名：部门名称_manager
+    加密密码('manager123'), -- 默认密码
+    d.部门经理ID, -- 员工ID
+    '激活', -- 账户状态
+    NOW() -- 当前时间
+FROM 部门 d
+WHERE d.部门经理ID IS NOT NULL 
+AND d.部门经理ID ;
+
+-- 3. 为财务专员创建用户
+INSERT INTO 用户 (用户名, 密码, 员工ID, 账户状态, 上次登录时间)
+SELECT 
+    CONCAT('finance_officer_', e.员工ID), -- 用户名：finance_officer_员工ID
+    加密密码('finance123'), -- 默认密码
+    e.员工ID, -- 员工ID
+    '激活', -- 账户状态
+    NOW() -- 当前时间
+FROM 员工 e
+WHERE e.职位 LIKE '%财务专员%'
+AND e.员工ID NOT IN (SELECT 员工ID FROM 用户);  -- 避免重复创建
+
+-- 4. 为人力资源管理员创建用户
+INSERT INTO 用户 (用户名, 密码, 员工ID, 账户状态, 上次登录时间)
+SELECT 
+    CONCAT('hr_admin_', e.员工ID), -- 用户名：hr_admin_员工ID
+    加密密码('hr123'), -- 默认密码
+    e.员工ID, -- 员工ID
+    '激活', -- 账户状态
+    NOW() -- 当前时间
+FROM 员工 e
+WHERE e.职位 LIKE '%人力资源管理员%'
+AND e.员工ID NOT IN (SELECT 员工ID FROM 用户);  -- 避免重复创建
+
+
+-- 1. 为系统管理员分配角色
+INSERT INTO 用户角色 (用户ID, 角色ID)
+SELECT 用户ID, 1  -- 角色ID 1 是系统管理员
+FROM 用户
+WHERE 用户名 = 'admin';
+
+-- 2. 为部门经理分配角色
+INSERT INTO 用户角色 (用户ID, 角色ID)
+SELECT u.用户ID, 3  -- 角色ID 3 是部门经理
+FROM 用户 u
+JOIN 部门 d ON u.员工ID = d.部门经理ID
+WHERE u.用户名 LIKE '%\_manager';  -- 匹配所有manager用户名
+
+-- 3. 为财务专员分配角色
+INSERT INTO 用户角色 (用户ID, 角色ID)
+SELECT u.用户ID, 4  -- 角色ID 4 是财务专员
+FROM 用户 u
+JOIN 员工 e ON u.员工ID = e.员工ID
+WHERE e.职位 LIKE '%财务专员%';
+
+-- 4. 为人力资源管理员分配角色
+INSERT INTO 用户角色 (用户ID, 角色ID)
+SELECT u.用户ID, 2  -- 角色ID 2 是人力资源管理员
+FROM 用户 u
+JOIN 员工 e ON u.员工ID = e.员工ID
+WHERE e.职位 LIKE '%人力资源管理员%';
+
+
+-- 创建获取当前用户角色的函数
+DELIMITER //
+CREATE FUNCTION 获取当前用户角色() RETURNS INT
+DETERMINISTIC
+BEGIN
+    DECLARE 角色ID INT;
+    
+    SELECT r.角色ID INTO 角色ID
+    FROM 用户 u
+    JOIN 用户角色 ur ON u.用户ID = ur.用户ID
+    JOIN 角色 r ON ur.角色ID = r.角色ID
+    WHERE u.用户名 = SUBSTRING_INDEX(USER(), '@', 1)
+    LIMIT 1;
+    
+    RETURN IFNULL(角色ID, 0);
+END//
+DELIMITER ;
+
+-- 创建获取当前用户部门ID的函数
+DELIMITER //
+CREATE FUNCTION 获取当前用户部门() RETURNS INT
+DETERMINISTIC
+BEGIN
+    DECLARE 部门ID INT;
+    
+    SELECT e.部门ID INTO 部门ID
+    FROM 用户 u
+    JOIN 员工 e ON u.员工ID = e.员工ID
+    WHERE u.用户名 = SUBSTRING_INDEX(USER(), '@', 1)
+    LIMIT 1;
+    
+    RETURN IFNULL(部门ID, 0);
+END//
+DELIMITER ;
+
+SHOW TRIGGERS;
+DROP TRIGGER 员工更新权限检查;
+DELIMITER //
+CREATE TRIGGER 员工更新权限检查 BEFORE UPDATE ON 员工
+FOR EACH ROW
+BEGIN
+    DECLARE 当前角色 INT;
+    DECLARE 当前部门 INT;
+    DECLARE 是否有权限 BOOLEAN DEFAULT FALSE;
+    
+    -- 获取当前用户角色和部门
+    SET 当前角色 = 获取当前用户角色();
+    SET 当前部门 = 获取当前用户部门();
+    
+    CASE 当前角色
+        WHEN 1 THEN 
+            -- 系统管理员有所有权限
+            SET 是否有权限 = TRUE;
+        WHEN 2 THEN 
+            -- 人力资源管理员可以修改所有员工，但不能修改自己
+            IF OLD.员工ID = (SELECT 员工ID FROM 用户 WHERE 用户名 = SUBSTRING_INDEX(USER(), '@', 1)) THEN
+                SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '人力资源管理员不能修改自己的信息';
+            ELSE
+                SET 是否有权限 = TRUE;
+            END IF;
+        WHEN 3 THEN 
+            -- 部门经理只能修改自己部门的员工
+            SET 是否有权限 = (OLD.部门ID = 当前部门);
+        ELSE
+            SET 是否有权限 = FALSE;
+    END CASE;
+    
+    IF NOT 是否有权限 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '您没有权限修改此员工信息';
+    END IF;
+    
+    -- 权限检查通过后，处理敏感数据加密
+    -- 检查联系电话是否为明文格式（尝试转换为字符串）
+    IF NEW.联系电话 IS NOT NULL AND NEW.联系电话 != OLD.联系电话 THEN
+        -- 尝试判断是否为明文输入（非二进制格式）
+        IF NOT ISNULL(CONVERT(NEW.联系电话 USING utf8mb4)) THEN
+            -- 明文输入，需要加密
+            SET NEW.联系电话 = 加密敏感数据(CONVERT(NEW.联系电话 USING utf8mb4));
+        END IF;
+    END IF;
+    
+    -- 检查电子邮箱是否为明文格式
+    IF NEW.电子邮箱 IS NOT NULL AND NEW.电子邮箱 != OLD.电子邮箱 THEN
+        -- 尝试判断是否为明文输入（非二进制格式）
+        IF NOT ISNULL(CONVERT(NEW.电子邮箱 USING utf8mb4)) THEN
+            -- 明文输入，需要加密
+            SET NEW.电子邮箱 = 加密敏感数据(CONVERT(NEW.电子邮箱 USING utf8mb4));
+        END IF;
+    END IF;
+END//
+DELIMITER ;
+
+-- 2. 薪资表更新触发器
+DELIMITER //
+CREATE TRIGGER 薪资更新权限检查 BEFORE UPDATE ON 薪资
+FOR EACH ROW
+BEGIN
+    DECLARE 当前角色 INT;
+    DECLARE 目标部门名称 VARCHAR(50);
+    DECLARE 是否有权限 BOOLEAN DEFAULT FALSE;
+    
+    -- 获取当前用户角色
+    SET 当前角色 = 获取当前用户角色();
+    
+    -- 获取被修改员工的部门名称
+    SELECT d.部门名称 INTO 目标部门名称
+    FROM 员工 e
+    JOIN 部门 d ON e.部门ID = d.部门ID
+    WHERE e.员工ID = NEW.员工ID;
+    
+    CASE 当前角色
+        WHEN 1 THEN 
+            -- 系统管理员有所有权限
+            SET 是否有权限 = TRUE;
+        WHEN 4 THEN 
+            -- 财务专员不能修改财务部员工薪资
+            SET 是否有权限 = (目标部门名称 != '财务部');
+        ELSE
+            SET 是否有权限 = FALSE;
+    END CASE;
+    
+    IF NOT 是否有权限 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '您没有权限修改此员工薪资信息';
+    END IF;
+END//
+DELIMITER ;
+
+				
+DELIMITER //
+DROP PROCEDURE IF EXISTS 创建所有MySQL用户 //
+CREATE PROCEDURE 创建所有MySQL用户()
+BEGIN
+    DECLARE done INT DEFAULT FALSE;
+    DECLARE 用户名称 VARCHAR(50);
+    DECLARE 加密密码 VARBINARY(256);
+    DECLARE 原始密码 VARCHAR(100);
+    DECLARE 用户角色ID INT;
+    DECLARE 用户员工ID INT;
+    DECLARE 用户部门ID INT;
+    
+    -- 定义游标，用于遍历所有用户
+    DECLARE user_cursor CURSOR FOR 
+        SELECT u.用户名, u.密码, ur.角色ID, u.员工ID
+        FROM 用户 u
+        JOIN 用户角色 ur ON u.用户ID = ur.用户ID;
+    
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+    
+    -- 遍历每个用户
+    OPEN user_cursor;
+    
+    read_loop: LOOP
+        FETCH user_cursor INTO 用户名称, 加密密码, 用户角色ID, 用户员工ID;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+        
+        -- 解密获取原始密码
+        SET 原始密码 = 解密密码(加密密码);
+        
+        -- 如果用户已存在则先删除
+        SET @sql = CONCAT('DROP USER IF EXISTS \'', 用户名称, '\'@\'localhost\'');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+        
+        -- 创建新用户，使用解密后的原始密码
+        SET @sql = CONCAT('CREATE USER \'', 用户名称, '\'@\'localhost\' IDENTIFIED BY \'', 原始密码, '\'');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+        
+        -- 根据角色分配不同的权限
+        CASE 用户角色ID
+            WHEN 1 THEN  -- 系统管理员
+                SET @sql = CONCAT('GRANT ALL PRIVILEGES ON 企业人事管理系统.* TO \'', 
+                                  用户名称, '\'@\'localhost\'');
+                
+            WHEN 2 THEN  -- 人力资源管理员
+                SET @sql = CONCAT('GRANT SELECT, INSERT, UPDATE, DELETE ON 企业人事管理系统.员工 TO \'', 
+                                  用户名称, '\'@\'localhost\'');
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+                
+                SET @sql = CONCAT('GRANT SELECT ON 企业人事管理系统.部门 TO \'', 
+                                  用户名称, '\'@\'localhost\'');
+                
+            WHEN 3 THEN  -- 部门经理
+                -- 获取部门经理所在的部门ID
+                SELECT e.部门ID INTO 用户部门ID
+                FROM 员工 e
+                WHERE e.员工ID = 用户员工ID;
+                
+                -- 创建该部门的专用视图
+                SET @sql = CONCAT('CREATE OR REPLACE VIEW 部门', 用户部门ID, '_员工视图 AS ',
+                                  'SELECT * FROM 全部员工信息视图 WHERE 部门ID = ', 用户部门ID);
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+                
+                SET @sql = CONCAT('CREATE OR REPLACE VIEW 部门', 用户部门ID, '_薪资视图 AS ',
+                                  'SELECT * FROM 薪资信息视图 WHERE 部门ID = ', 用户部门ID);
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+                
+                -- 授予该部门视图的访问权限
+                SET @sql = CONCAT('GRANT SELECT ON 企业人事管理系统.部门', 用户部门ID, '_员工视图 TO \'', 
+                                  用户名称, '\'@\'localhost\'');
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+                
+                SET @sql = CONCAT('GRANT SELECT ON 企业人事管理系统.部门', 用户部门ID, '_薪资视图 TO \'', 
+                                  用户名称, '\'@\'localhost\'');
+                
+            WHEN 4 THEN  -- 财务专员
+                SET @sql = CONCAT('GRANT SELECT, UPDATE ON 企业人事管理系统.薪资 TO \'', 
+                                  用户名称, '\'@\'localhost\'');
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+                
+                SET @sql = CONCAT('GRANT SELECT ON 企业人事管理系统.非财务部薪资视图 TO \'', 
+                                  用户名称, '\'@\'localhost\'');
+                PREPARE stmt FROM @sql;
+                EXECUTE stmt;
+                DEALLOCATE PREPARE stmt;
+                
+        END CASE;
+        
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END LOOP;
+    
+    CLOSE user_cursor;
+    
+    -- 刷新权限
+    FLUSH PRIVILEGES;
+END//
+DELIMITER ;
+
+-- 执行修改后的存储过程
+CALL 创建所有MySQL用户();
